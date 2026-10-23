@@ -25,7 +25,7 @@ services:
       DB_NAME: gestion_documental
       JWT_SECRET: secreto-solo-para-calificacion
       CORS_ORIGIN: http://localhost:4200
-      MAX_FILE_MB: 5
+      //MAX_FILE_MB: 5
     ports:
       - "3000:3000"
     depends_on:

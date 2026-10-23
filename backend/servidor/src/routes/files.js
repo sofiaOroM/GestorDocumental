@@ -15,10 +15,16 @@ const router = Router();
 router.use(authenticate);
 const files = () => col('files');
 
-const upload = multer({
+/*const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.maxFileBytes, files: 1 }
-});
+});*/
+
+// Sin límite de tamaño, salvo que se defina MAX_FILE_MB en el .env
+const limites = { files: 1 };
+if (config.maxFileBytes) limites.fileSize = config.maxFileBytes;
+const upload = multer({ storage: multer.memoryStorage(), limits: limites });
+
 
 // Los nombres con tildes llegan como latin1; se reconvierten a UTF-8.
 const fixName = (n) => (/[^\x00-\xff]/.test(n) ? n : Buffer.from(n, 'latin1').toString('utf8'));
