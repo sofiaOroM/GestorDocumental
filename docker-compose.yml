@@ -1,0 +1,44 @@
+# Levanta todo el sistema con:  docker compose up --build
+#   Cliente:  http://localhost:4200
+#   API:      http://localhost:3000/api
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Para ver la base con Compass desde tu equipo, descomenta (libera antes el 27017 si tienes MongoDB local):
+    # ports:
+    #   - "27017:27017"
+
+  api:
+    build: ./backend/servidor
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      MONGO_URI: mongodb://mongo:27017
+      DB_NAME: gestion_documental
+      JWT_SECRET: secreto-solo-para-calificacion
+      CORS_ORIGIN: http://localhost:4200
+      MAX_FILE_MB: 5
+    ports:
+      - "3000:3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "4200:80"
+    depends_on:
+      - api
+
+volumes:
+  mongo_data:

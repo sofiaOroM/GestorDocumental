@@ -1,0 +1,4 @@
+# backend/servidor/.dockerignore
+node_modules
+.env
+.idea
