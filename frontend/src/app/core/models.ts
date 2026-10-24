@@ -5,7 +5,7 @@ export type TipoRecurso = 'file' | 'folder';
 
 export interface Usuario {
   _id: string; nombre: string; email: string; rol: Rol; activo: boolean;
-  almacenamientoUsado: number; createdAt: string;
+  almacenamientoUsado: number; almacenamientoAsignado: number; createdAt: string;
 }
 export interface UsuarioDir { _id: string; nombre: string; email: string; }
 
