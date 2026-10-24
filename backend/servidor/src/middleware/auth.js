@@ -18,11 +18,12 @@ export async function authenticate(req, res, next) {
   }
 
   const user = await col('users').findOne(
-    { _id: new ObjectId(payload.sub) },
-    { projection: { passwordHash: 0 } }
+      { _id: new ObjectId(payload.sub) },
+      { projection: { passwordHash: 0 } }
   );
   if (!user || !user.activo) throw new HttpError(401, 'Usuario inexistente o inactivo');
-  req.user = user;
+  // Los usuarios sin cuota guardada reciben la cuota por defecto
+  req.user = { ...user, almacenamientoAsignado: user.almacenamientoAsignado ?? config.defaultQuotaBytes };
   next();
 }
 
