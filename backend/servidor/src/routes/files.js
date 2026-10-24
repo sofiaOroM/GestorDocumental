@@ -10,27 +10,22 @@ import { LEVEL, LEVEL_NAME, loadResource } from '../utils/access.js';
 import { logActivity } from '../utils/activity.js';
 import { saveContent, deleteContent } from '../utils/gridfs.js';
 import { nameTaken } from '../utils/tree.js';
+import { verificarEspacio } from '../utils/quota.js';
 
 const router = Router();
 router.use(authenticate);
 const files = () => col('files');
-
-/*const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: config.maxFileBytes, files: 1 }
-});*/
 
 // Sin límite de tamaño, salvo que se defina MAX_FILE_MB en el .env
 const limites = { files: 1 };
 if (config.maxFileBytes) limites.fileSize = config.maxFileBytes;
 const upload = multer({ storage: multer.memoryStorage(), limits: limites });
 
-
 // Los nombres con tildes llegan como latin1; se reconvierten a UTF-8.
 const fixName = (n) => (/[^\x00-\xff]/.test(n) ? n : Buffer.from(n, 'latin1').toString('utf8'));
 const sinContenido = { projection: { gridFsId: 0 } };
 
-// ---- Búsqueda / filtros / ordenamiento sobre los propios archivos ----
+// ---- Búsqueda / filtros / ordenamiento sobre MIS archivos ----
 router.get('/', async (req, res) => {
   const { q, extension, folderId, desde, hasta, minSize, maxSize, sort = 'createdAt', order = 'desc' } = req.query;
   const { page, limit, skip } = pagina(req.query);
@@ -75,6 +70,7 @@ router.post('/', upload.single('archivo'), async (req, res) => {
     throw new HttpError(409, 'Ya existe un archivo con ese nombre en esta carpeta');
 
   const size = req.file.buffer.length;
+  await verificarEspacio(ownerId, size, ownerId.equals(req.user._id)); // cuota del propietario
   const gridFsId = await saveContent(req.file.buffer, nombre, { ownerId });
   const now = new Date();
   const doc = {
@@ -128,15 +124,17 @@ router.put('/:id/content', upload.single('archivo'), async (req, res) => {
   if (!req.file) throw new HttpError(400, 'Debes enviar un archivo en el campo "archivo"');
 
   const size = req.file.buffer.length;
+  // Solo se valida el espacio adicional que ocupará el nuevo contenido
+  await verificarEspacio(recurso.ownerId, size - recurso.size, recurso.ownerId.equals(req.user._id));
   const nuevoId = await saveContent(req.file.buffer, recurso.nombre, { ownerId: recurso.ownerId });
   await files().updateOne(
-    { _id: recurso._id },
-    { $set: { gridFsId: nuevoId, size, updatedAt: new Date() } }
+      { _id: recurso._id },
+      { $set: { gridFsId: nuevoId, size, updatedAt: new Date() } }
   );
   await deleteContent(recurso.gridFsId);
   await col('users').updateOne(
-    { _id: recurso.ownerId },
-    { $inc: { almacenamientoUsado: size - recurso.size } }
+      { _id: recurso.ownerId },
+      { $inc: { almacenamientoUsado: size - recurso.size } }
   );
   await logActivity(req.user, 'edit', 'file', recurso, { size });
   res.json({ ok: true, size });
@@ -150,8 +148,8 @@ router.patch('/:id', async (req, res) => {
     throw new HttpError(409, 'Ya existe un archivo con ese nombre en esta carpeta');
 
   await files().updateOne(
-    { _id: recurso._id },
-    { $set: { nombre, extension, mimeType: MIME[extension], updatedAt: new Date() } }
+      { _id: recurso._id },
+      { $set: { nombre, extension, mimeType: MIME[extension], updatedAt: new Date() } }
   );
   await logActivity(req.user, 'rename', 'file', { ...recurso, nombre }, { anterior: recurso.nombre });
   res.json({ ok: true, nombre, extension });
@@ -185,8 +183,8 @@ router.patch('/:id/move', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const { recurso } = await loadResource(req.user, 'file', oid(req.params.id), LEVEL.owner);
   await files().updateOne(
-    { _id: recurso._id },
-    { $set: { deletedAt: new Date(), deletedBy: req.user._id, trashRootId: recurso._id } }
+      { _id: recurso._id },
+      { $set: { deletedAt: new Date(), deletedBy: req.user._id, trashRootId: recurso._id } }
   );
   await logActivity(req.user, 'trash', 'file', recurso);
   res.json({ ok: true });

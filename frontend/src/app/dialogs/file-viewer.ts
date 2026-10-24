@@ -40,8 +40,14 @@ import { NIVELES } from '../core/util';
           }
           @if (puedeComentar()) {
             <div class="row">
-              <input class="grow" type="text" placeholder="Escribe un comentario…" [(ngModel)]="nuevo" (keyup.enter)="comentar()" />
+              <input class="grow" type="text" placeholder="Escribe un comentario…" [attr.maxlength]="maxComentario" [(ngModel)]="nuevo" (keyup.enter)="comentar()" />
               <button class="primary" [disabled]="!nuevo().trim()" (click)="comentar()">Comentar</button>
+            </div>
+            <div class="fila-ayuda">
+              @if (!nuevo().trim()) {
+                <p class="hint"><span class="material-icons">info</span>Escribe un comentario para habilitar el botón.</p>
+              } @else { <span></span> }
+              <span class="contador" [class.limite]="nuevo().length >= maxComentario">{{ nuevo().length }}/{{ maxComentario }}</span>
             </div>
           }
         }
@@ -63,6 +69,7 @@ export class FileViewer implements OnInit {
   original = signal('');
   comentarios = signal<Comentario[]>([]);
   nuevo = signal('');
+  maxComentario = 1000;
 
   puedeEditar = computed(() => ['owner', 'edit'].includes(this.nivel()));
   puedeComentar = computed(() => ['owner', 'edit', 'comment'].includes(this.nivel()));

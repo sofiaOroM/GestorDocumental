@@ -6,6 +6,7 @@ import { Auth } from '../core/auth';
 import { Toast } from '../core/toast';
 import { Usuario } from '../core/models';
 import { accionLabel, fmtBytes, fmtFecha, PERMISOS, tipoLabel } from '../core/util';
+import { rangoInvalido } from '../core/validators';
 
 type Filtro = 'fechas' | 'usuario' | 'granularidad';
 interface Rep {
@@ -25,6 +26,10 @@ const REPORTES: Rep[] = [
     cols: [{ h: 'Archivo', f: r => r.nombre }, { h: 'Operaciones', f: r => r.operaciones }, { h: 'Última', f: r => fmtFecha(r.ultima) },
       { h: 'Existe', f: r => (r.existe ? 'Sí' : 'Eliminado') }],
     barra: r => r.operaciones },
+  { id: 'carp', grupo: 'Archivos y almacenamiento', titulo: 'Carpetas con más archivos', path: 'carpetas-mas-archivos', filtros: [],
+    cols: [{ h: 'Carpeta', f: r => r.nombre }, { h: 'Propietario', f: r => r.propietario }, { h: 'Archivos', f: r => r.archivos },
+      { h: 'Tamaño total', f: r => fmtBytes(r.tamanoTotal) }],
+    barra: r => r.archivos },
   { id: 'top', grupo: 'Usuarios', titulo: 'Top 10 usuarios con más archivos', path: 'usuarios-top-archivos', admin: true, filtros: [],
     cols: [{ h: 'Usuario', f: r => r.nombre }, { h: 'Correo', f: r => r.email }, { h: 'Archivos', f: r => r.archivos },
       { h: 'Tamaño total', f: r => fmtBytes(r.tamanoTotal) }],
@@ -35,6 +40,9 @@ const REPORTES: Rep[] = [
     barra: r => r.totalCompartidos },
   { id: 'masusu', grupo: 'Compartición', titulo: 'Archivos compartidos con más usuarios', path: 'archivos-mas-compartidos', filtros: [],
     cols: [{ h: 'Archivo', f: r => r.nombre }, { h: 'Usuarios', f: r => r.usuarios }], barra: r => r.usuarios },
+  { id: 'nunca', grupo: 'Compartición', titulo: 'Archivos que nunca han sido compartidos', path: 'archivos-nunca-compartidos', filtros: [],
+    cols: [{ h: 'Archivo', f: r => r.nombre }, { h: 'Tipo', f: r => '.' + r.extension }, { h: 'Tamaño', f: r => fmtBytes(r.size) },
+      { h: 'Propietario', f: r => r.propietario }, { h: 'Creado', f: r => fmtFecha(r.createdAt) }] },
   { id: 'por', grupo: 'Compartición', titulo: 'Recursos compartidos por un usuario', path: 'compartidos-por', filtros: ['usuario'],
     cols: [{ h: 'Recurso', f: r => r.recurso.nombre }, { h: 'Tipo', f: r => tipoLabel(r.resourceType) },
       { h: 'Compartido con', f: r => r.sharedWith?.nombre }, { h: 'Permiso', f: r => PERMISOS[r.permission] }, { h: 'Fecha', f: r => fmtFecha(r.createdAt) }] },
@@ -78,19 +86,22 @@ const REPORTES: Rep[] = [
             </select>
           }
           @if (sel().filtros.includes('fechas')) {
-            <input type="date" [(ngModel)]="desde" title="Desde" />
-            <input type="date" [(ngModel)]="hasta" title="Hasta" />
+            <input type="date" [(ngModel)]="desde" title="Desde" [attr.max]="hasta() || null" [class.invalido]="fechasInvalidas()" />
+            <input type="date" [(ngModel)]="hasta" title="Hasta" [attr.min]="desde() || null" [class.invalido]="fechasInvalidas()" />
           }
           @if (sel().filtros.includes('granularidad')) {
             <select [(ngModel)]="gran"><option value="dia">Por día</option><option value="hora">Por hora</option><option value="mes">Por mes</option></select>
           }
-          <button class="primary" (click)="ejecutar()">Generar</button>
+          <button class="primary" [disabled]="fechasInvalidas()" (click)="ejecutar()">Generar</button>
         </div>
+        @if (fechasInvalidas()) {
+          <p class="err filtros-msg"><span class="material-icons">error_outline</span>La fecha «Desde» no puede ser posterior a «Hasta». Corrígela para habilitar el botón Generar.</p>
+        }
 
         @if (filas() !== null) {
           <table class="tabla">
             <thead>
-              <tr>@for (c of sel().cols; track c.h) { <th>{{ c.h }}</th> }@if (sel().barra) { <th class="ancho"></th> }</tr>
+            <tr>@for (c of sel().cols; track c.h) { <th>{{ c.h }}</th> }@if (sel().barra) { <th class="ancho"></th> }</tr>
             </thead>
             <tbody>
               @for (f of filas(); track $index) {
@@ -122,6 +133,7 @@ export class Reports implements OnInit {
   filas = signal<any[] | null>(null);
   usuarios = signal<Usuario[]>([]);
   userId = signal(''); desde = signal(''); hasta = signal(''); gran = signal('dia');
+  fechasInvalidas = computed(() => this.sel().filtros.includes('fechas') && rangoInvalido(this.desde(), this.hasta()));
   max = computed(() => {
     const b = this.sel().barra;
     return b ? Math.max(1, ...(this.filas() ?? []).map(b)) : 1;
@@ -137,6 +149,7 @@ export class Reports implements OnInit {
   elegir(r: Rep) { this.sel.set(r); this.filas.set(null); this.ejecutar(); }
 
   async ejecutar() {
+    if (this.fechasInvalidas()) return;
     const f = this.sel().filtros;
     const params: Record<string, unknown> = {};
     if (f.includes('usuario')) params['userId'] = this.userId();

@@ -11,7 +11,7 @@ const TZ = 'America/Guatemala';
 // Alcance: el admin ve datos globales; un usuario solo los suyos.
 const ownerScope = (u) => (u.rol === 'admin' ? {} : { ownerId: u._id });
 const activityScope = (u) =>
-  u.rol === 'admin' ? {} : { $or: [{ userId: u._id }, { ownerId: u._id }] };
+    u.rol === 'admin' ? {} : { $or: [{ userId: u._id }, { ownerId: u._id }] };
 const limite = (q, def = 10) => Math.min(100, Math.max(1, Number(q.limit) || def));
 
 function usuarioObjetivo(req) {
@@ -55,12 +55,27 @@ router.get('/archivos-mas-operaciones', async (req, res) => {
     { $match: { ...activityScope(req.user), resourceType: 'file' } },
     { $sort: { timestamp: -1 } },
     { $group: { _id: '$resourceId', operaciones: { $sum: 1 }, nombre: { $first: '$resourceName' },
-                ultima: { $first: '$timestamp' } } },
+        ultima: { $first: '$timestamp' } } },
     { $sort: { operaciones: -1 } },
     { $limit: limite(req.query) },
     { $lookup: { from: 'files', localField: '_id', foreignField: '_id', as: 'f' } },
     { $project: { _id: 0, archivoId: '$_id', nombre: 1, operaciones: 1, ultima: 1,
-                  existe: { $gt: [{ $size: '$f' }, 0] } } }
+        existe: { $gt: [{ $size: '$f' }, 0] } } }
+  ]).toArray());
+});
+
+// Carpetas con mayor cantidad de archivos (archivos directos de cada carpeta, sin contar la papelera)
+router.get('/carpetas-mas-archivos', async (req, res) => {
+  res.json(await col('files').aggregate([
+    { $match: { ...ownerScope(req.user), deletedAt: null, folderId: { $ne: null } } },
+    { $group: { _id: '$folderId', archivos: { $sum: 1 }, tamanoTotal: { $sum: '$size' } } },
+    { $lookup: { from: 'folders', localField: '_id', foreignField: '_id', as: 'c' } },
+    { $match: { 'c.0': { $exists: true }, 'c.deletedAt': null } },
+    { $sort: { archivos: -1 } },
+    { $limit: limite(req.query) },
+    { $lookup: { from: 'users', localField: 'c.ownerId', foreignField: '_id', as: 'u' } },
+    { $project: { _id: 0, carpetaId: '$_id', nombre: { $arrayElemAt: ['$c.nombre', 0] },
+        propietario: { $arrayElemAt: ['$u.nombre', 0] }, archivos: 1, tamanoTotal: 1 } }
   ]).toArray());
 });
 
@@ -75,7 +90,7 @@ router.get('/usuarios-top-archivos', requireAdmin, async (req, res) => {
     { $limit: 10 },
     { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
     { $project: { _id: 0, userId: '$_id', nombre: { $arrayElemAt: ['$u.nombre', 0] },
-                  email: { $arrayElemAt: ['$u.email', 0] }, archivos: 1, tamanoTotal: 1 } }
+        email: { $arrayElemAt: ['$u.email', 0] }, archivos: 1, tamanoTotal: 1 } }
   ]).toArray());
 });
 
@@ -92,8 +107,8 @@ router.get('/usuarios-mas-compartidos', requireAdmin, async (req, res) => {
     { $limit: limite(req.query) },
     { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'u' } },
     { $project: { _id: 0, userId: '$_id', nombre: { $arrayElemAt: ['$u.nombre', 0] },
-                  totalCompartidos: 1, archivos: 1, carpetas: 1,
-                  recursosDistintos: { $size: '$recursosDistintos' } } }
+        totalCompartidos: 1, archivos: 1, carpetas: 1,
+        recursosDistintos: { $size: '$recursosDistintos' } } }
   ]).toArray());
 });
 
@@ -109,6 +124,29 @@ router.get('/archivos-mas-compartidos', async (req, res) => {
     { $sort: { usuarios: -1 } },
     { $limit: limite(req.query) },
     { $project: { _id: 0, archivoId: '$_id', nombre: { $arrayElemAt: ['$f.nombre', 0] }, usuarios: 1 } }
+  ]).toArray());
+});
+
+// Archivos que nunca han sido compartidos: sin comparticiones vigentes y sin ningún evento "share" en el historial
+// (así un archivo compartido y luego revocado NO cuenta como "nunca compartido").
+router.get('/archivos-nunca-compartidos', async (req, res) => {
+  res.json(await col('files').aggregate([
+    { $match: { ...ownerScope(req.user), deletedAt: null } },
+    { $lookup: { from: 'shares', localField: '_id', foreignField: 'resourceId', as: 'vigentes' } },
+    { $match: { vigentes: { $size: 0 } } },
+    { $lookup: {
+        from: 'activity_log',
+        let: { id: '$_id' },
+        pipeline: [
+          { $match: { $expr: { $and: [{ $eq: ['$resourceId', '$$id'] }, { $eq: ['$action', 'share'] }] } } },
+          { $limit: 1 }
+        ],
+        as: 'historial' } },
+    { $match: { historial: { $size: 0 } } },
+    { $sort: { createdAt: -1 } },
+    { $limit: 500 },
+    { $lookup: { from: 'users', localField: 'ownerId', foreignField: '_id', as: 'u' } },
+    { $project: { nombre: 1, extension: 1, size: 1, createdAt: 1, propietario: { $arrayElemAt: ['$u.nombre', 0] } } }
   ]).toArray());
 });
 
@@ -165,7 +203,7 @@ router.get('/operaciones-por-periodo', async (req, res) => {
   res.json(await col('activity_log').aggregate([
     { $match: matchActividad(req) },
     { $group: { _id: { $dateToString: { format: formato, date: '$timestamp', timezone: TZ } },
-                cantidad: { $sum: 1 } } },
+        cantidad: { $sum: 1 } } },
     { $sort: { _id: 1 } },
     { $project: { _id: 0, periodo: '$_id', cantidad: 1 } }
   ]).toArray());
@@ -176,11 +214,11 @@ router.get('/principales-acciones', async (req, res) => {
   res.json(await col('activity_log').aggregate([
     { $match: matchActividad(req) },
     { $group: { _id: { accion: '$action', recurso: '$resourceType' }, cantidad: { $sum: 1 },
-                usuarios: { $addToSet: '$userId' } } },
+        usuarios: { $addToSet: '$userId' } } },
     { $sort: { cantidad: -1 } },
     { $limit: limite(req.query) },
     { $project: { _id: 0, accion: '$_id.accion', recurso: '$_id.recurso', cantidad: 1,
-                  usuariosDistintos: { $size: '$usuarios' } } }
+        usuariosDistintos: { $size: '$usuarios' } } }
   ]).toArray());
 });
 

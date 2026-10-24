@@ -4,6 +4,8 @@ import { col } from '../db.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { HttpError, oid, cleanName } from '../utils/http.js';
 import { logActivity } from '../utils/activity.js';
+import { config } from '../config.js';
+import { MB, conCuota, parseCuotaMB } from '../utils/quota.js';
 
 const router = Router();
 router.use(authenticate);
@@ -11,9 +13,9 @@ router.use(authenticate);
 // Directorio para elegir con quién compartir (cualquier usuario autenticado).
 router.get('/directory', async (req, res) => {
   const lista = await col('users')
-    .find({ activo: true, _id: { $ne: req.user._id } }, { projection: { nombre: 1, email: 1 } })
-    .sort({ nombre: 1 })
-    .toArray();
+      .find({ activo: true, _id: { $ne: req.user._id } }, { projection: { nombre: 1, email: 1 } })
+      .sort({ nombre: 1 })
+      .toArray();
   res.json(lista);
 });
 
@@ -22,10 +24,10 @@ router.use(requireAdmin);
 
 router.get('/', async (req, res) => {
   const lista = await col('users')
-    .find({}, { projection: { passwordHash: 0 } })
-    .sort({ nombre: 1 })
-    .toArray();
-  res.json(lista);
+      .find({}, { projection: { passwordHash: 0 } })
+      .sort({ nombre: 1 })
+      .toArray();
+  res.json(lista.map(conCuota));
 });
 
 router.post('/', async (req, res) => {
@@ -36,6 +38,9 @@ router.post('/', async (req, res) => {
   if (typeof password !== 'string' || password.length < 8)
     throw new HttpError(400, 'La contraseña debe tener al menos 8 caracteres');
   if (!['admin', 'user'].includes(rol)) throw new HttpError(400, 'Rol inválido');
+  // Espacio asignado (en MB); si no se indica, se usa la cuota por defecto
+  const almacenamientoAsignado =
+      req.body?.cuotaMB !== undefined ? parseCuotaMB(req.body.cuotaMB) : config.defaultQuotaBytes;
 
   const doc = {
     nombre,
@@ -44,6 +49,7 @@ router.post('/', async (req, res) => {
     rol,
     activo: true,
     almacenamientoUsado: 0,
+    almacenamientoAsignado,
     createdAt: new Date()
   };
   const { insertedId } = await col('users').insertOne(doc); // 11000 => 409 por índice único
@@ -67,6 +73,13 @@ router.patch('/:id', async (req, res) => {
     set.rol = rol;
   }
   if (activo !== undefined) set.activo = Boolean(activo);
+  if (req.body?.cuotaMB !== undefined) {
+    const bytes = parseCuotaMB(req.body.cuotaMB);
+    const usado = user.almacenamientoUsado ?? 0;
+    if (bytes < usado)
+      throw new HttpError(400, `La cuota no puede ser menor al espacio ya usado (${(usado / MB).toFixed(2)} MB)`);
+    set.almacenamientoAsignado = bytes;
+  }
   if (password !== undefined) {
     if (typeof password !== 'string' || password.length < 8)
       throw new HttpError(400, 'La contraseña debe tener al menos 8 caracteres');
@@ -80,7 +93,7 @@ router.patch('/:id', async (req, res) => {
   const campos = Object.keys(set).filter((k) => k !== 'passwordHash');
   await logActivity(req.user, 'update_user', 'user', user, { campos });
   const actualizado = await col('users').findOne({ _id: id }, { projection: { passwordHash: 0 } });
-  res.json(actualizado);
+  res.json(conCuota(actualizado));
 });
 
 export default router;

@@ -26,8 +26,11 @@ const usuarios = [
   { nombre: 'Administrador General', email: 'admin@docs.com', rol: 'admin' },
   { nombre: 'Ana López', email: 'ana@docs.com', rol: 'user' },
   { nombre: 'Luis Pérez', email: 'luis@docs.com', rol: 'user' }
-].map((u) => ({
-  _id: new ObjectId(), ...u, passwordHash, activo: true, almacenamientoUsado: 0, createdAt: haceDias(60)
+].map((u, i) => ({
+  _id: new ObjectId(), ...u, passwordHash, activo: true, almacenamientoUsado: 0,
+  // Cuota asignada (MB): administrador 200, Ana 100, Luis 50
+  almacenamientoAsignado: [200, 100, 50][i] * 1024 * 1024,
+  createdAt: haceDias(60)
 }));
 const [admin, ana, luis] = usuarios;
 
@@ -155,10 +158,10 @@ for (const s of shares.filter((s) => s.resourceType === 'file' && s.permission !
 // ---------- Historial de actividad ----------
 const historial = [];
 const registrar = (user, action, resourceType, recurso, timestamp, details = {}) =>
-  historial.push({
-    userId: user._id, userName: user.nombre, ownerId: recurso.ownerId ?? user._id,
-    action, resourceType, resourceId: recurso._id, resourceName: recurso.nombre, details, timestamp
-  });
+    historial.push({
+      userId: user._id, userName: user.nombre, ownerId: recurso.ownerId ?? user._id,
+      action, resourceType, resourceId: recurso._id, resourceName: recurso.nombre, details, timestamp
+    });
 const porId = (id) => usuarios.find((u) => u._id.equals(id));
 
 for (const u of usuarios) for (let k = 0; k < 8; k++) registrar(u, 'login', 'user', u, haceDias(40));
@@ -174,7 +177,7 @@ for (const s of shares) {
   const recurso = (s.resourceType === 'file' ? archivos : carpetas).find((r) => r._id.equals(s.resourceId));
   const destinatario = porId(s.sharedWithId);
   registrar(porId(s.ownerId), 'share', s.resourceType, recurso, s.createdAt,
-    { sharedWith: destinatario.nombre, sharedWithId: destinatario._id, permission: s.permission });
+      { sharedWith: destinatario.nombre, sharedWithId: destinatario._id, permission: s.permission });
   if (s.resourceType === 'file' && rnd() < 0.6) registrar(destinatario, 'download', 'file', recurso, despuesDe(s.createdAt));
 }
 for (const c of comentarios) {
