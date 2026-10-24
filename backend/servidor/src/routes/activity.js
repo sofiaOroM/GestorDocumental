@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { col } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
-import { HttpError, oid, parseRange, pagina } from '../utils/http.js';
+import { HttpError, oid, parseRange, pagina, escapeRegex } from '../utils/http.js';
 import { LEVEL, loadResource } from '../utils/access.js';
 
 const router = Router();
@@ -17,11 +17,18 @@ async function listar(filtro, query, res) {
   res.json({ total, page, limit, items });
 }
 
-// Admin: toda la actividad. Usuario: la que realizó y la realizada sobre sus recursos.
+// Admin: toda la actividad. Usuario: la que realizó + la realizada sobre sus recursos.
 router.get('/', async (req, res) => {
-  const { userId, action, resourceType, resourceId, desde, hasta } = req.query;
+  const { userId, action, resourceType, resourceId, desde, hasta, q } = req.query;
   const filtro = {};
-  if (req.user.rol !== 'admin') filtro.$or = [{ userId: req.user._id }, { ownerId: req.user._id }];
+  const y = [];
+  if (req.user.rol !== 'admin') y.push({ $or: [{ userId: req.user._id }, { ownerId: req.user._id }] });
+  // Búsqueda de texto: nombre del recurso o del usuario que actuó (sin distinguir mayúsculas)
+  if (q) {
+    const rx = { $regex: escapeRegex(String(q).slice(0, 120)), $options: 'i' };
+    y.push({ $or: [{ resourceName: rx }, { userName: rx }] });
+  }
+  if (y.length) filtro.$and = y;
   if (userId) filtro.userId = oid(userId, 'userId');
   if (action) filtro.action = String(action);
   if (resourceType) filtro.resourceType = String(resourceType);
