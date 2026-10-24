@@ -17,6 +17,7 @@ https://github.com/sofiaOroM/GestorDocumental
 ```bash
 git clone https://github.com/sofiaOroM/GestorDocumental.git GestorDocumental
 cd GestorDocumental
+```
 
 ## Ejecución rápida con Docker (recomendada)
 
