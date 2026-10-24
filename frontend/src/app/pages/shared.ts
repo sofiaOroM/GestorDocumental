@@ -1,5 +1,6 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { Api } from '../core/api';
@@ -8,10 +9,13 @@ import { Confirm } from '../core/confirm';
 import { Share } from '../core/models';
 import { PERMISOS } from '../core/util';
 import { FileViewer } from '../dialogs/file-viewer';
+import { rangoInvalido } from '../core/validators';
+
+const norm = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase(); // ignora tildes y mayúsculas
 
 @Component({
   selector: 'app-shared',
-  imports: [DatePipe, FileViewer],
+  imports: [DatePipe, FormsModule, FileViewer],
   template: `
     <div class="tabs">
       <button [class.activo]="tab() === 'recibidos'" (click)="tab.set('recibidos')">
@@ -22,11 +26,29 @@ import { FileViewer } from '../dialogs/file-viewer';
       </button>
     </div>
 
+    <div class="filtros">
+      <input type="text" placeholder="Buscar por recurso o persona…" maxlength="120" [(ngModel)]="q" />
+      <select [(ngModel)]="tipo">
+        <option value="">Archivos y carpetas</option><option value="file">Solo archivos</option><option value="folder">Solo carpetas</option>
+      </select>
+      <select [(ngModel)]="permiso">
+        <option value="">Todos los permisos</option><option value="read">Lectura</option>
+        <option value="comment">Comentar</option><option value="edit">Edición</option>
+      </select>
+      <input type="date" [(ngModel)]="desde" title="Compartido desde" [attr.max]="hasta() || null" [class.invalido]="fechasInvalidas()" />
+      <input type="date" [(ngModel)]="hasta" title="Compartido hasta" [attr.min]="desde() || null" [class.invalido]="fechasInvalidas()" />
+      @if (hayFiltros()) { <button (click)="limpiar()"><span class="material-icons">close</span>Limpiar</button> }
+      <span class="muted small">Mostrando {{ visibles() }} de {{ total() }}</span>
+    </div>
+    @if (fechasInvalidas()) {
+      <p class="err filtros-msg"><span class="material-icons">error_outline</span>La fecha «Desde» no puede ser posterior a «Hasta». Corrígela para ver resultados.</p>
+    }
+
     @if (tab() === 'recibidos') {
       <table class="tabla">
         <thead><tr><th>Recurso</th><th>Tipo</th><th>De</th><th>Permiso</th><th>Fecha</th></tr></thead>
         <tbody>
-          @for (s of recibidos(); track s._id) {
+          @for (s of recibidosVis(); track s._id) {
             <tr>
               <td>
                 <a class="nombre" (click)="abrir(s)">
@@ -38,14 +60,18 @@ import { FileViewer } from '../dialogs/file-viewer';
               <td><span class="badge perm-{{ s.permission }}">{{ permisos[s.permission] }}</span></td>
               <td>{{ s.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
             </tr>
-          } @empty { <tr><td colspan="5" class="vacio"><span class="material-icons">inbox</span>Nadie ha compartido recursos contigo</td></tr> }
+          } @empty {
+            <tr><td colspan="5" class="vacio">
+              <span class="material-icons">{{ hayFiltros() ? 'search_off' : 'inbox' }}</span>{{ hayFiltros() ? 'Ningún recurso coincide con los filtros' : 'Nadie ha compartido recursos contigo' }}
+            </td></tr>
+          }
         </tbody>
       </table>
     } @else {
       <table class="tabla">
         <thead><tr><th>Recurso</th><th>Tipo</th><th>Compartido con</th><th>Permiso</th><th>Fecha</th><th></th></tr></thead>
         <tbody>
-          @for (s of enviados(); track s._id) {
+          @for (s of enviadosVis(); track s._id) {
             <tr>
               <td>
                 <span class="nombre">
@@ -64,7 +90,11 @@ import { FileViewer } from '../dialogs/file-viewer';
                 <button class="danger" (click)="retirar(s)"><span class="material-icons">person_remove</span>Retirar</button>
               </td>
             </tr>
-          } @empty { <tr><td colspan="6" class="vacio"><span class="material-icons">outbox</span>No has compartido recursos</td></tr> }
+          } @empty {
+            <tr><td colspan="6" class="vacio">
+              <span class="material-icons">{{ hayFiltros() ? 'search_off' : 'outbox' }}</span>{{ hayFiltros() ? 'Ningún recurso coincide con los filtros' : 'No has compartido recursos' }}
+            </td></tr>
+          }
         </tbody>
       </table>
     }
@@ -83,6 +113,28 @@ export class Shared implements OnInit {
   enviados = signal<Share[]>([]);
   visor = signal<{ _id: string; nombre: string } | null>(null);
   permisos = PERMISOS;
+
+  q = signal(''); tipo = signal(''); permiso = signal(''); desde = signal(''); hasta = signal('');
+  fechasInvalidas = computed(() => rangoInvalido(this.desde(), this.hasta()));
+  hayFiltros = computed(() => !!this.q().trim() || !!this.tipo() || !!this.permiso() || !!this.desde() || !!this.hasta());
+
+  // Coincide con el texto (recurso o persona, sin tildes ni mayúsculas), tipo, permiso y fecha de compartición
+  private coincide(s: Share, persona: { nombre: string; email: string } | undefined) {
+    const q = norm(this.q().trim());
+    if (q && !norm(s.recurso.nombre).includes(q) && !norm(persona?.nombre ?? '').includes(q) && !norm(persona?.email ?? '').includes(q))
+      return false;
+    if (this.tipo() && s.resourceType !== this.tipo()) return false;
+    if (this.permiso() && s.permission !== this.permiso()) return false;
+    const t = new Date(s.createdAt).getTime();
+    const ini = this.desde() ? new Date(this.desde() + 'T00:00:00-06:00').getTime() : -Infinity;
+    const fin = this.hasta() ? new Date(this.hasta() + 'T23:59:59.999-06:00').getTime() : Infinity;
+    return t >= ini && t <= fin;
+  }
+  recibidosVis = computed(() => this.recibidos().filter((s) => this.coincide(s, s.owner)));
+  enviadosVis = computed(() => this.enviados().filter((s) => this.coincide(s, s.sharedWith)));
+  visibles = computed(() => (this.tab() === 'recibidos' ? this.recibidosVis().length : this.enviadosVis().length));
+  total = computed(() => (this.tab() === 'recibidos' ? this.recibidos().length : this.enviados().length));
+  limpiar() { this.q.set(''); this.tipo.set(''); this.permiso.set(''); this.desde.set(''); this.hasta.set(''); }
 
   ngOnInit() { this.cargar(); }
 
