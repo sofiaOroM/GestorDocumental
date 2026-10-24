@@ -9,18 +9,20 @@ import { Toast } from '../core/toast';
 import { Confirm } from '../core/confirm';
 import { Archivo, Contenido, TipoRecurso } from '../core/models';
 import { NIVELES } from '../core/util';
+import { rangoInvalido, validarArchivoSubida } from '../core/validators';
 import { Bytes } from '../core/bytes.pipe';
 import { PromptDialog } from '../dialogs/prompt-dialog';
 import { MoveDialog } from '../dialogs/move-dialog';
 import { ShareDialog } from '../dialogs/share-dialog';
 import { FileViewer } from '../dialogs/file-viewer';
 import { HistoryDialog } from '../dialogs/history-dialog';
+import { NewFileDialog } from '../dialogs/new-file-dialog';
 
-interface Dlg { t: 'nuevaCarpeta' | 'renombrar' | 'mover' | 'compartir' | 'ver' | 'historial'; tipo?: TipoRecurso; item?: any; }
+interface Dlg { t: 'nuevaCarpeta' | 'nuevoArchivo' | 'renombrar' | 'mover' | 'compartir' | 'ver' | 'historial'; tipo?: TipoRecurso; item?: any; }
 
 @Component({
   selector: 'app-explorer',
-  imports: [FormsModule, RouterLink, DatePipe, Bytes, PromptDialog, MoveDialog, ShareDialog, FileViewer, HistoryDialog],
+  imports: [FormsModule, RouterLink, DatePipe, Bytes, PromptDialog, MoveDialog, ShareDialog, FileViewer, HistoryDialog, NewFileDialog],
   template: `
     <div class="toolbar">
       <div class="crumbs">
@@ -43,6 +45,9 @@ interface Dlg { t: 'nuevaCarpeta' | 'renombrar' | 'mover' | 'compartir' | 'ver' 
         <button (click)="dlg.set({ t: 'nuevaCarpeta' })">
           <span class="material-icons ic-ambar">create_new_folder</span>Nueva carpeta
         </button>
+        <button (click)="dlg.set({ t: 'nuevoArchivo' })">
+          <span class="material-icons">note_add</span>Nuevo archivo
+        </button>
         <label class="btn primary">
           <span class="material-icons">upload_file</span>Subir archivos
           <input type="file" hidden multiple accept=".txt,.md" (change)="subir($event)" />
@@ -51,18 +56,21 @@ interface Dlg { t: 'nuevaCarpeta' | 'renombrar' | 'mover' | 'compartir' | 'ver' 
     </div>
 
     <div class="filtros">
-      <input type="text" placeholder="Buscar por nombre…" [(ngModel)]="q" (keyup.enter)="buscar()" />
+      <input type="text" placeholder="Buscar por nombre…" maxlength="120" [(ngModel)]="q" (keyup.enter)="buscar()" />
       <select [(ngModel)]="ext">
         <option value="">Todos los tipos</option><option value="txt">.txt</option><option value="md">.md</option>
       </select>
-      <input type="date" [(ngModel)]="desde" title="Desde" />
-      <input type="date" [(ngModel)]="hasta" title="Hasta" />
+      <input type="date" [(ngModel)]="desde" title="Desde" [attr.max]="hasta() || null" [class.invalido]="fechasInvalidas()" />
+      <input type="date" [(ngModel)]="hasta" title="Hasta" [attr.min]="desde() || null" [class.invalido]="fechasInvalidas()" />
       <select [(ngModel)]="orden">
         <option value="createdAt">Más recientes</option><option value="nombre">Nombre</option><option value="size">Tamaño</option>
       </select>
-      <button class="primary" (click)="buscar()"><span class="material-icons">search</span>Buscar</button>
+      <button class="primary" [disabled]="fechasInvalidas()" (click)="buscar()"><span class="material-icons">search</span>Buscar</button>
       @if (resultados()) { <button (click)="limpiar()"><span class="material-icons">close</span>Limpiar</button> }
     </div>
+    @if (fechasInvalidas()) {
+      <p class="err filtros-msg"><span class="material-icons">error_outline</span>La fecha «Desde» no puede ser posterior a «Hasta». Corrígela para habilitar el botón Buscar.</p>
+    }
 
     @if (resultados(); as rs) {
       <h3>Resultados ({{ rs.length }}) <small class="muted">en todos tus archivos</small></h3>
@@ -137,10 +145,13 @@ interface Dlg { t: 'nuevaCarpeta' | 'renombrar' | 'mover' | 'compartir' | 'ver' 
     @if (dlg(); as d) {
       @switch (d.t) {
         @case ('nuevaCarpeta') {
-          <app-prompt-dialog titulo="Nueva carpeta" (confirmar)="crearCarpeta($event)" (cancelar)="dlg.set(null)" />
+          <app-prompt-dialog titulo="Nueva carpeta" tipo="carpeta" (confirmar)="crearCarpeta($event)" (cancelar)="dlg.set(null)" />
+        }
+        @case ('nuevoArchivo') {
+          <app-new-file-dialog (creado)="crearArchivo($event)" (cancelar)="dlg.set(null)" />
         }
         @case ('renombrar') {
-          <app-prompt-dialog titulo="Renombrar" [valor]="d.item.nombre" (confirmar)="renombrar($event)" (cancelar)="dlg.set(null)" />
+          <app-prompt-dialog titulo="Renombrar" [valor]="d.item.nombre" [tipo]="d.tipo === 'file' ? 'archivo' : 'carpeta'" (confirmar)="renombrar($event)" (cancelar)="dlg.set(null)" />
         }
         @case ('mover') {
           <app-move-dialog [tipo]="d.tipo!" [item]="d.item" (movido)="dlg.set(null); recargar()" (cancelar)="dlg.set(null)" />
@@ -178,6 +189,7 @@ export class Explorer {
 
   q = signal(''); ext = signal(''); desde = signal(''); hasta = signal(''); orden = signal('createdAt');
   resultados = signal<Archivo[] | null>(null);
+  fechasInvalidas = computed(() => rangoInvalido(this.desde(), this.hasta()));
 
   constructor() {
     effect(() => {
@@ -199,6 +211,7 @@ export class Explorer {
   irACarpeta(a: Archivo) { this.router.navigate(a.folderId ? ['/explorador', a.folderId] : ['/explorador']); }
 
   async buscar() {
+    if (this.fechasInvalidas()) return;
     try {
       const r = await firstValueFrom(this.api.searchFiles({
         q: this.q(), extension: this.ext(), desde: this.desde(), hasta: this.hasta(),
@@ -210,6 +223,18 @@ export class Explorer {
   limpiar() {
     this.q.set(''); this.ext.set(''); this.desde.set(''); this.hasta.set(''); this.orden.set('createdAt');
     this.resultados.set(null);
+  }
+
+  // Crea un .txt/.md a partir del texto escrito; se sube con el mismo endpoint que los archivos cargados
+  async crearArchivo(d: { nombre: string; texto: string }) {
+    this.dlg.set(null);
+    try {
+      const archivo = new File([d.texto], d.nombre, { type: 'text/plain' });
+      await firstValueFrom(this.api.upload(archivo, this.id()));
+      this.toast.ok('Archivo creado');
+      this.auth.refresh();
+      this.recargar();
+    } catch (e) { this.toast.error(e); }
   }
 
   async crearCarpeta(nombre: string) {
@@ -252,10 +277,15 @@ export class Explorer {
     const archivos = Array.from(input.files ?? []);
     input.value = '';
     let ok = 0;
+    const rechazados: string[] = [];
     for (const f of archivos) {
+      // Validación previa: tipo, nombre y tamaño (no se envía al servidor si no cumple)
+      const err = validarArchivoSubida(f);
+      if (err) { rechazados.push(`${f.name}: ${err}`); continue; }
       try { await firstValueFrom(this.api.upload(f, this.id())); ok++; }
-      catch (e) { this.toast.error(`${f.name}: ${(e as any)?.error?.error ?? 'no se pudo subir'}`); }
+      catch (e) { rechazados.push(`${f.name}: ${(e as any)?.error?.error ?? 'no se pudo subir'}`); }
     }
+    rechazados.forEach((r) => this.toast.error(r));
     if (ok) { this.toast.ok(`${ok} archivo(s) subido(s)`); this.auth.refresh(); this.recargar(); }
   }
 }

@@ -24,6 +24,9 @@ import { Permiso, Share, TipoRecurso, UsuarioDir } from '../core/models';
           </select>
           <button class="primary" [disabled]="!userId()" (click)="agregar()">Compartir</button>
         </div>
+        @if (!userId()) {
+          <p class="hint"><span class="material-icons">info</span>Selecciona un usuario para habilitar el botón «Compartir».</p>
+        }
 
         <h4>Acceso actual</h4>
         @if (!existentes().length) { <p class="muted">Aún no está compartido con nadie.</p> }

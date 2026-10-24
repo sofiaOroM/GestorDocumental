@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -6,6 +6,7 @@ import { Api } from '../core/api';
 import { Toast } from '../core/toast';
 import { Actividad } from '../core/models';
 import { accionLabel, tipoLabel } from '../core/util';
+import { rangoInvalido } from '../core/validators';
 
 const ACCIONES = ['login', 'upload', 'download', 'view', 'edit', 'rename', 'move', 'trash', 'restore',
   'permanent_delete', 'create_folder', 'share', 'share_update', 'unshare', 'comment', 'create_user', 'update_user'];
@@ -20,10 +21,13 @@ const ACCIONES = ['login', 'upload', 'download', 'view', 'edit', 'rename', 'move
         <option value="">Todas las acciones</option>
         @for (a of acciones; track a) { <option [value]="a">{{ label(a) }}</option> }
       </select>
-      <input type="date" [(ngModel)]="desde" title="Desde" />
-      <input type="date" [(ngModel)]="hasta" title="Hasta" />
-      <button class="primary" (click)="buscar()">Filtrar</button>
+      <input type="date" [(ngModel)]="desde" title="Desde" [attr.max]="hasta() || null" [class.invalido]="fechasInvalidas()" />
+      <input type="date" [(ngModel)]="hasta" title="Hasta" [attr.min]="desde() || null" [class.invalido]="fechasInvalidas()" />
+      <button class="primary" [disabled]="fechasInvalidas()" (click)="buscar()">Filtrar</button>
     </div>
+    @if (fechasInvalidas()) {
+      <p class="err filtros-msg"><span class="material-icons">error_outline</span>La fecha «Desde» no puede ser posterior a «Hasta». Corrígela para habilitar el botón Filtrar.</p>
+    }
     <table class="tabla">
       <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Tipo</th><th>Recurso</th></tr></thead>
       <tbody>
@@ -50,13 +54,14 @@ export class ActivityPage implements OnInit {
   tipo = tipoLabel;
 
   accion = signal(''); desde = signal(''); hasta = signal('');
+  fechasInvalidas = computed(() => rangoInvalido(this.desde(), this.hasta()));
   items = signal<Actividad[]>([]);
   page = signal(1);
   total = signal(0);
   paginas = () => Math.max(1, Math.ceil(this.total() / 20));
 
   ngOnInit() { this.ir(1); }
-  buscar() { this.ir(1); }
+  buscar() { if (!this.fechasInvalidas()) this.ir(1); }
 
   async ir(page: number) {
     try {

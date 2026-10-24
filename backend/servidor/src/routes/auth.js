@@ -24,6 +24,7 @@ router.post('/login', async (req, res) => {
   });
   await logActivity(user, 'login', 'user', user);
   const { passwordHash, ...publico } = user;
+  publico.almacenamientoAsignado ??= config.defaultQuotaBytes;
   res.json({ token, user: publico });
 });
 
