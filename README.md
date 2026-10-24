@@ -54,7 +54,7 @@ npm start             # http://localhost:4200
 
 | Documento                                            | Contenido |
 |------------------------------------------------------|---|
-| [`Manual Tecnico.pdf`](docs/manual-tecnico.md)       | Instalación, Docker, arquitectura, API, reglas de negocio y solución de problemas |
-| [`Manual de Usuario.pdf`](docs/manual-de-usuario.md) | Guía de uso de la aplicación |
+| [`Manual Tecnico.pdf`](documentacion/Manual Técnico - Sistema de Gestión Documental.pdf )       | Instalación, Docker, arquitectura, API, reglas de negocio y solución de problemas |
+| [`Manual de Usuario.pdf`](documentacion/manual-de-usuario.md) | Guía de uso de la aplicación |
 | [`Modelo Documental.pdf`](docs/modelo-documental.md) | Colecciones, embebidos vs. referencias, índices y consultas |
 | [`diagramas/`](docs/diagramas/)                      | Casos de uso, secuencia y despliegue (draw.io) |
