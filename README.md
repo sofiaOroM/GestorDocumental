@@ -50,11 +50,11 @@ npm install
 npm start             # http://localhost:4200
 ```
 
-## Documentación (`docs/`)
+## Documentación (`documentacion/`)
 
-| Documento                                            | Contenido |
-|------------------------------------------------------|---|
-| [`Manual Tecnico.pdf`](docs/manual-tecnico.md)       | Instalación, Docker, arquitectura, API, reglas de negocio y solución de problemas |
-| [`Manual de Usuario.pdf`](docs/manual-de-usuario.md) | Guía de uso de la aplicación |
-| [`Modelo Documental.pdf`](docs/modelo-documental.md) | Colecciones, embebidos vs. referencias, índices y consultas |
-| [`diagramas/`](docs/diagramas/)                      | Casos de uso, secuencia y despliegue (draw.io) |
+| Documento | Contenido |
+|-----------|-----------|
+| [Manual Técnico](documentacion/) | Instalación, Docker, arquitectura, API, reglas de negocio y solución de problemas |
+| [Manual de Usuario](documentacion/) | Guía de uso de la aplicación |
+| [Modelo Documental](documentacion/) | Colecciones, embebidos vs. referencias, índices y consultas |
+| [Diagramas UML](https://drive.google.com/file/d/1VLQ2YMUoMvirM-gxzB6aIuVvjmrnPccT/view?usp=sharing) | Casos de uso, secuencia y despliegue |
