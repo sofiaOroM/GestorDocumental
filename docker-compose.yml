@@ -20,12 +20,14 @@ services:
     build: ./backend/servidor
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       PORT: 3000
       MONGO_URI: mongodb://mongo:27017
       DB_NAME: gestion_documental
       JWT_SECRET: secreto-solo-para-calificacion
       CORS_ORIGIN: http://localhost:4200
-      //MAX_FILE_MB: 5
+      DEFAULT_QUOTA_MB : 100
+      # MAX_FILE_MB: 5
     ports:
       - "3000:3000"
     depends_on:
