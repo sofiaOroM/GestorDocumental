@@ -8,6 +8,16 @@ Plataforma para almacenar, organizar, buscar y compartir archivos `.txt` y `.md`
 | Servidor (`backend/servidor/`) | Node.js + Express 5 |
 | Base de datos | MongoDB (contenido de los archivos en GridFS) |
 
+## Repositorio
+
+https://github.com/sofiaOroM/GestorDocumental
+
+## Obtener el proyecto
+
+```bash
+git clone https://github.com/sofiaOroM/GestorDocumental.git GestorDocumental
+cd GestorDocumental
+
 ## Ejecución rápida con Docker (recomendada)
 
 **Requisitos:** Docker Desktop en ejecución y los puertos **3000** y **4200** libres.
